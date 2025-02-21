@@ -3,7 +3,7 @@
 """
 # ask each NS in the query for the domainname
 # for answers and record response times for
-# each AF, transport and authority
+# each IP address, transport and authority
 
 """
 
