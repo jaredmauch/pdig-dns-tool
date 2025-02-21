@@ -141,7 +141,10 @@ response = dns.resolver.resolve(".", "NS")
 for var in response.response.answer:
     for i in var.items:
         for fam in socket_af_types:
-            add_info = socket.getaddrinfo(host=i.to_text(), port=None, family=fam, proto=socket.SOCK_RAW)
+            try:
+                add_info = socket.getaddrinfo(host=i.to_text(), port=None, family=fam, proto=socket.SOCK_RAW)
+            except socket.gaierror:
+                continue
             str_name = str(i.to_text())
             for a in add_info:
                 addr_list = a[4]
