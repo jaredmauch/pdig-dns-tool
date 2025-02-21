@@ -102,7 +102,7 @@ def query_all(full_qname, prev_cache, qtype_list):
                     print(f"timeout querying: {x['addrinfo']}")
                 except OSError as e:
                     # This is the new block to catch network unreachable errors
-                    print(f"Network error: {e} when trying to reach {x['addrinfo']}")
+#                    print(f"Network error: {e} when trying to reach {x['addrinfo']}")
                     continue  # Skip this address and try the next one
 
     # output some statistics at the end
