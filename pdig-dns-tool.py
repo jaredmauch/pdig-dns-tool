@@ -73,21 +73,23 @@ def query_all(full_qname, prev_cache, qtype_list):
                                 cname_reply = str(i)
 
                     # parse the authority portion of response packet
-                    for var in resp.authority:
-                        for i in var.items:
-                            # check NS responses
-                            if type(i) == dns.rdtypes.ANY.NS.NS:
-                                # both address families
-                                for fam in socket_af_types:
-                                    try:
-                                        add_info = socket.getaddrinfo(host=i.to_text(), port=None, family=fam, proto=socket.SOCK_RAW)
-                                    except socket.gaierror:
-#                                        print(e)
-                                        continue
-                                    str_name = str(i.to_text())
-                                    for a in add_info:
-                                        addr_list = a[4]
-                                        new_cache.append({'qname': str_name, 'af_type': a[0], 'addrinfo': addr_list[0]})
+                    # if we are not yet to an authoritative server
+                    if not (resp.flags & dns.flags.AA):
+                        for var in resp.authority:
+                            for i in var.items:
+                                # check NS responses
+                                if type(i) == dns.rdtypes.ANY.NS.NS:
+                                    # both address families
+                                    for fam in socket_af_types:
+                                        try:
+                                            add_info = socket.getaddrinfo(host=i.to_text(), port=None, family=fam, proto=socket.SOCK_RAW)
+                                        except socket.gaierror:
+    #                                        print(e)
+                                            continue
+                                        str_name = str(i.to_text())
+                                        for a in add_info:
+                                            addr_list = a[4]
+                                            new_cache.append({'qname': str_name, 'af_type': a[0], 'addrinfo': addr_list[0]})
                 except dns.query.BadResponse as e:
                     print(f"error {e} querying {x['addrinfo']} for {full_qname}")
                 except dns.exception.Timeout as e:
