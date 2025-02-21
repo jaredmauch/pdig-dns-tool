@@ -14,17 +14,23 @@ import time
 import tempfile
 
 # 3rd party imports
-import dns
-import dns.message
-import dns.query
-import dns.rdatatype
-import dns.resolver
-import dns.zone
+try:
+    import dns
+    import dns.message
+    import dns.query
+    import dns.rdatatype
+    import dns.resolver
+    import dns.zone
+except:
+    print("apt install python3-dnspython")
+    sys.exit(0)
+
 # apt install python3-netifaces
 try:
     import netifaces
 except:
     print("apt install python3-netifaces")
+    sys.exit(0)
 
 all_ips = {}
 socket_af_types = [socket.AF_INET, socket.AF_INET6]
@@ -94,6 +100,10 @@ def query_all(full_qname, prev_cache, qtype_list):
                     print(f"error {e} querying {x['addrinfo']} for {full_qname}")
                 except dns.exception.Timeout as e:
                     print(f"timeout querying: {x['addrinfo']}")
+                except OSError as e:
+                    # This is the new block to catch network unreachable errors
+                    print(f"Network error: {e} when trying to reach {x['addrinfo']}")
+                    continue  # Skip this address and try the next one
 
     # output some statistics at the end
     min_value = min(times)
