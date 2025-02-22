@@ -43,6 +43,7 @@ def query_all(full_qname, prev_cache, qtype_list):
     new_cache = []
     times = []
     query_ip = {}
+    domain_exists = True
 
     for qtype in qtype_list:
         try:
@@ -72,6 +73,12 @@ def query_all(full_qname, prev_cache, qtype_list):
                     times.append(latency_ms)
 
                     print(f"ns={x['qname']} addr={x['addrinfo']}, latency={latency_ms:.3f} ms")
+                    if resp.rcode() == dns.rcode.NXDOMAIN:
+                        domain_exists = False
+                        continue
+                    if resp.rcode() != dns.rcode.NOERROR:
+                        print(f"{dns.rcode.to_text(resp.rcode())} for {full_qname} at {x['addrinfo']}")
+                        continue
                     if len(resp.answer) > 0:
                         # 5 = CNAME rfc1035
                         if resp.answer[0].rdtype == 5:
@@ -114,6 +121,9 @@ def query_all(full_qname, prev_cache, qtype_list):
     min_max_ratio = max_value / min_value
     print(f"latency: min={min_value:.3f} ms max={max_value:.3f} ms avg={avg_value:.3f} ms")
     print(f"stdev={stddev:.3f} ms max-min={min_max_range:.3f} max/min={min_max_ratio:.2f} x latency variance")
+    if not domain_exists:
+        print(f"NXDOMAIN for {full_qname}, stopping…")
+        return ([], None)
     return (new_cache, cname_reply)
 
 root_hints = []
