@@ -114,6 +114,11 @@ def query_all(full_qname, prev_cache, qtype_list):
     min_max_ratio = max_value / min_value
     print(f"latency: min={min_value:.3f} ms max={max_value:.3f} ms avg={avg_value:.3f} ms")
     print(f"stdev={stddev:.3f} ms max-min={min_max_range:.3f} max/min={min_max_ratio:.2f} x latency variance")
+    # See bug #5. This is to prevent some endless loops if we do not
+    # progress in the domain name tree.
+    if sorted(new_cache, key=lambda ns: ns["qname"]) == \
+       sorted(prev_cache, key=lambda ns: ns["qname"]):
+        new_cache = []
     return (new_cache, cname_reply)
 
 root_hints = []
