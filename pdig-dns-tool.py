@@ -3,7 +3,7 @@
 """
 # ask each NS in the query for the domainname
 # for answers and record response times for
-# each AF, transport and authority
+# each address family, IP address, transport and authority
 
 """
 
@@ -124,6 +124,11 @@ def query_all(full_qname, prev_cache, qtype_list):
     if not domain_exists:
         print(f"NXDOMAIN for {full_qname}, stopping…")
         return ([], None)
+    # See bug #5. This is to prevent some endless loops if we do not
+    # progress in the domain name tree.
+    if sorted(new_cache, key=lambda ns: ns["qname"]) == \
+       sorted(prev_cache, key=lambda ns: ns["qname"]):
+        new_cache = []
     return (new_cache, cname_reply)
 
 root_hints = []

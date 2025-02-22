@@ -1,7 +1,7 @@
 # pdig-dns-tool
 Python implemention of dig that checks all servers recording latency
 
-Many people use dig +trace to check the authorities and delegations, but when you want to check them all, I wanted a easy way to do this but also know per-server, per-address-family (AF_INET6 vs AF_INET) to make it easier to identify outliers.  This tool will help you with that and give some basic statistics on a per-delegation level.  It also will follow CNAMEs it encounters in the chain, but does it in a "return to the root" sort of way which while not ideal, helps get metrics on what a cold cache client might experience at each delegation point.
+Many people use dig +trace to check the authorities and delegations, but when you want to check them all, I wanted a easy way to do this but also know per-server, per-address-family (AF_INET6 vs AF_INET), per IP address to make it easier to identify outliers.  This tool will help you with that and give some basic statistics on a per-delegation level.  It also will follow CNAMEs it encounters in the chain, but does it in a "return to the root" sort of way which while not ideal, helps get metrics on what a cold cache client might experience at each delegation point.
 
 I may make a presentation on this for a community like DNS-OARC in the future.
 
