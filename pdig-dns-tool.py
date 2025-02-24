@@ -22,15 +22,15 @@ try:
     import dns.resolver
     import dns.zone
 except:
-    print("apt install python3-dnspython")
+    print("apt install python3-dnspython or pip3 install dnspython")
     sys.exit(0)
 
 # apt install python3-netifaces
-try:
-    import netifaces
-except:
-    print("apt install python3-netifaces")
-    sys.exit(0)
+#try:
+#    import netifaces
+#except:
+#    print("apt install python3-netifaces or pip3 install netifaces")
+#    sys.exit(0)
 
 all_ips = {}
 socket_af_types = [socket.AF_INET, socket.AF_INET6]
@@ -149,10 +149,8 @@ fh = open(temp_name, "w", encoding='ascii')
 
 print(f"querying for {domain}")
 
-# axfr = dns.query.xfr(masterip, domainname, lifetime=dns_timeout)
-
 # preseed the data
-response = dns.resolver.resolve(".", "NS")
+response = dns.resolver.resolve(".", "NS", lifetime=10)
 for var in response.response.answer:
     for i in var.items:
         for fam in socket_af_types:
