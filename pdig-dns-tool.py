@@ -36,8 +36,11 @@ except:
 all_ips = {}
 socket_af_types = [socket.AF_INET, socket.AF_INET6]
 
-# qtype_list is array of possible query types
-# eg: [dns.rdatatype.A, dns.rdatatype.AAAA]
+# full_qname: domain name to query for
+# prev_cache: list of nameservers to query
+# qtype_list: is array of possible query types
+#     eg: [dns.rdatatype.A, dns.rdatatype.AAAA]
+# tcp: when true, send query over tcp
 #
 def query_all(full_qname, prev_cache, qtype_list, tcp):
     cname_reply = None
