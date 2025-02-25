@@ -124,8 +124,8 @@ def query_all(full_qname, prev_cache, qtype_list, tcp):
     max_value = 0 if len(times) == 0 else max(times)
     avg_value = 0 if len(times) == 0 else sum(times)/len(times)
     min_max_range = max_value - min_value
-    stddev = statistics.stdev(times)
-    min_max_ratio = max_value / min_value
+    stddev = 0 if len(times) < 2 else statistics.stdev(times)
+    min_max_ratio = 0 if min_value == 0 else max_value / min_value
     print(f"latency: min={min_value:.3f} ms max={max_value:.3f} ms avg={avg_value:.3f} ms")
     print(f"stdev={stddev:.3f} ms max-min={min_max_range:.3f} max/min={min_max_ratio:.2f} x latency variance")
     if not domain_exists:
@@ -196,6 +196,7 @@ while len(old_cache) > 0:
 
 for ip in all_ips:
     fh.write(f"# {ip}\n")
+    fh.write(f"dig +noall +answer +stats @{ip} identity.nameserver.id ch txt\n")
     fh.write(f"mtr -bw {ip}\n")
 
 ts = time.ctime()
