@@ -42,7 +42,7 @@ socket_af_types = [socket.AF_INET, socket.AF_INET6]
 #     eg: [dns.rdatatype.A, dns.rdatatype.AAAA]
 # tcp: when true, send query over tcp
 #
-def query_all(full_qname, prev_cache, qtype_list, tcp):
+def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle):
     cname_reply = None
     new_cache = []
     times = []
@@ -80,6 +80,8 @@ def query_all(full_qname, prev_cache, qtype_list, tcp):
                     times.append(latency_ms)
 
                     print(f"ns={x['qname']} addr={x['addrinfo']}, latency={latency_ms:.3f} ms")
+                    if file_handle is not None:
+                        file_handle.write(f"ns={x['qname']} addr={x['addrinfo']}, latency={latency_ms:.3f} ms" + '\n')
                     if resp.rcode() == dns.rcode.NXDOMAIN:
                         domain_exists = False
                         continue
@@ -128,8 +130,14 @@ def query_all(full_qname, prev_cache, qtype_list, tcp):
     min_max_ratio = 0 if min_value == 0 else max_value / min_value
     print(f"latency: min={min_value:.3f} ms max={max_value:.3f} ms avg={avg_value:.3f} ms")
     print(f"stdev={stddev:.3f} ms max-min={min_max_range:.3f} max/min={min_max_ratio:.2f} x latency variance")
+    if file_handle is not None:
+        file_handle.write(f"latency: min={min_value:.3f} ms max={max_value:.3f} ms avg={avg_value:.3f} ms" + '\n')
+        file_handle.write(f"stdev={stddev:.3f} ms max-min={min_max_range:.3f} max/min={min_max_ratio:.2f} x latency variance" + '\n')
+
     if not domain_exists:
         print(f"NXDOMAIN for {full_qname}, stopping...")
+        if file_handle is not None:
+            file_handle.write(f"NXDOMAIN for {full_qname}, stopping..." + '\n')
         return ([], None)
     # See bug #5. This is to prevent some endless loops if we do not
     # progress in the domain name tree.
@@ -147,6 +155,7 @@ parser.add_argument('domain', help="domain name to query") # positional argument
 parser.add_argument('-6', '--ipv6', action='store_true', help="query ipv6-only") # ipv6-only
 parser.add_argument('-4', '--ipv4', action='store_true', help="query ipv4-only") # ipv4-only
 parser.add_argument('-t', '--tcp', action='store_true', help="send queries over TCP") # use TCP
+parser.add_argument('-r', '--report', action='store_true', help="Save results to file")
 
 args = parser.parse_args()
 if args.ipv4:
@@ -161,11 +170,19 @@ else:
 #parse args
 domain = args.domain
 
-temp_name = '/tmp/' + next(tempfile._get_candidate_names())
-print(temp_name)
-fh = open(temp_name, "w", encoding='ascii')
-
 print(f"querying for {domain}")
+
+fh = None
+if args.report:
+    temp_name = '/tmp/' + next(tempfile._get_candidate_names())
+    print(temp_name)
+    fh = open(temp_name, "w", encoding='ascii')
+    fh.write(f"querying for {domain}" + '\n')
+
+ts = time.ctime()
+print(f"start={ts}")
+if fh is not None:
+    fh.write(f"end={ts}" + '\n')
 
 # preseed the data
 response = dns.resolver.resolve(".", "NS", lifetime=10, tcp=use_tcp)
@@ -185,23 +202,31 @@ old_cache = root_hints
 
 # run through the domain tree until done
 while len(old_cache) > 0:
-    (reply_hints, new_domain) = query_all(domain, old_cache, [dns.rdatatype.TXT], use_tcp)
+    (reply_hints, new_domain) = query_all(domain, old_cache, [dns.rdatatype.TXT], use_tcp, fh)
     old_cache = reply_hints
     if new_domain is not None:
         print(f"(re)querying for {domain} due to CNAME")
+        if fh is not None:
+            fh.write(f"(re)querying for {domain} due to CNAME" + '\n')
         domain = new_domain
         old_cache = root_hints
     print("===================")
+    if fh is not None:
+        fh.write("===================" + "\n")
 #
-
-for ip in all_ips:
-    fh.write(f"# {ip}\n")
-    fh.write(f"dig +noall +answer +stats @{ip} identity.nameserver.id ch txt\n")
-    fh.write(f"mtr -bw {ip}\n")
 
 ts = time.ctime()
 print(f"end={ts}")
-print(temp_name)
+if fh is not None:
+    fh.write(f"end={ts}" + '\n')
 
-fh.close()
+    for ip in all_ips:
+        fh.write(f"# {ip}\n")
+        fh.write(f"dig +noall +answer +stats @{ip} identity.nameserver.id ch txt\n")
+        fh.write(f"mtr -bw {ip}\n")
+
+if fh is not None:
+    fh.close()
+    print(temp_name)
+
 #
