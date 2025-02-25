@@ -120,10 +120,10 @@ def query_all(full_qname, prev_cache, qtype_list, tcp):
                     continue  # Skip this address and try the next one
 
     # output some statistics at the end
-    min_value = min(times)
-    max_value = max(times)
+    min_value = 0 if len(times) == 0 else min(times)
+    max_value = 0 if len(times) == 0 else max(times)
     avg_value = 0 if len(times) == 0 else sum(times)/len(times)
-    min_max_range = max_value-min_value
+    min_max_range = max_value - min_value
     stddev = statistics.stdev(times)
     min_max_ratio = max_value / min_value
     print(f"latency: min={min_value:.3f} ms max={max_value:.3f} ms avg={avg_value:.3f} ms")
@@ -149,7 +149,6 @@ parser.add_argument('-4', '--ipv4', action='store_true', help="query ipv4-only")
 parser.add_argument('-t', '--tcp', action='store_true', help="send queries over TCP") # use TCP
 
 args = parser.parse_args()
-print(args.domain, args.ipv4, args.ipv6)
 if args.ipv4:
     socket_af_types = [socket.AF_INET]
 if args.ipv6:
