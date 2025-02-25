@@ -7,6 +7,7 @@
 
 """
 
+import argparse
 import socket
 import statistics
 import sys
@@ -38,7 +39,7 @@ socket_af_types = [socket.AF_INET, socket.AF_INET6]
 # qtype_list is array of possible query types
 # eg: [dns.rdatatype.A, dns.rdatatype.AAAA]
 #
-def query_all(full_qname, prev_cache, qtype_list):
+def query_all(full_qname, prev_cache, qtype_list, tcp):
     cname_reply = None
     new_cache = []
     times = []
@@ -65,7 +66,10 @@ def query_all(full_qname, prev_cache, qtype_list):
                 # timer
                 start_time = time.time()
                 try:
-                    resp =  dns.query.udp(q, x['addrinfo'], timeout=10)
+                    if tcp:
+                        resp = dns.query.tcp(q, x['addrinfo'], timeout=10)
+                    else:
+                        resp =  dns.query.udp(q, x['addrinfo'], timeout=10)
                     stop_time = time.time()
 
                     latency = stop_time - start_time
@@ -87,7 +91,7 @@ def query_all(full_qname, prev_cache, qtype_list):
 
                     # parse the authority portion of response packet
                     # if we are not yet to an authoritative server
-                    if not (resp.flags & dns.flags.AA):
+                    if not resp.flags & dns.flags.AA:
                         for var in resp.authority:
                             for i in var.items:
                                 # check NS responses
@@ -122,7 +126,7 @@ def query_all(full_qname, prev_cache, qtype_list):
     print(f"latency: min={min_value:.3f} ms max={max_value:.3f} ms avg={avg_value:.3f} ms")
     print(f"stdev={stddev:.3f} ms max-min={min_max_range:.3f} max/min={min_max_ratio:.2f} x latency variance")
     if not domain_exists:
-        print(f"NXDOMAIN for {full_qname}, stopping…")
+        print(f"NXDOMAIN for {full_qname}, stopping...")
         return ([], None)
     # See bug #5. This is to prevent some endless loops if we do not
     # progress in the domain name tree.
@@ -135,13 +139,25 @@ root_hints = []
 
 # main()
 
-#parse args
-if len(sys.argv) > 1:
-    domain = sys.argv[1]
+parser = argparse.ArgumentParser(prog=sys.argv[0])
+parser.add_argument('domain', help="domain name to query") # positional argument
+parser.add_argument('-6', '--ipv6', action='store_true', help="query ipv6-only") # ipv6-only
+parser.add_argument('-4', '--ipv4', action='store_true', help="query ipv4-only") # ipv4-only
+parser.add_argument('-t', '--tcp', action='store_true', help="send queries over TCP") # use TCP
+
+args = parser.parse_args()
+print(args.domain, args.ipv4, args.ipv6)
+if args.ipv4:
+    socket_af_types = [socket.AF_INET]
+if args.ipv6:
+    socket_af_types = [socket.AF_INET6]
+if args.tcp:
+    use_tcp = True
 else:
-    prog_name = sys.argv[0]
-    print(f"Usage: {prog_name} example.com")
-    sys.exit(1)
+    use_tcp = False
+
+#parse args
+domain = args.domain
 
 temp_name = '/tmp/' + next(tempfile._get_candidate_names())
 print(temp_name)
@@ -150,7 +166,7 @@ fh = open(temp_name, "w", encoding='ascii')
 print(f"querying for {domain}")
 
 # preseed the data
-response = dns.resolver.resolve(".", "NS", lifetime=10)
+response = dns.resolver.resolve(".", "NS", lifetime=10, tcp=use_tcp)
 for var in response.response.answer:
     for i in var.items:
         for fam in socket_af_types:
@@ -167,7 +183,7 @@ old_cache = root_hints
 
 # run through the domain tree until done
 while len(old_cache) > 0:
-    (reply_hints, new_domain) = query_all(domain, old_cache, [dns.rdatatype.TXT])
+    (reply_hints, new_domain) = query_all(domain, old_cache, [dns.rdatatype.TXT], use_tcp)
     old_cache = reply_hints
     if new_domain is not None:
         print(f"(re)querying for {domain} due to CNAME")
@@ -178,7 +194,7 @@ while len(old_cache) > 0:
 
 for ip in all_ips:
     fh.write(f"# {ip}\n")
-    fh.write(f"mtr -w {ip}\n")
+    fh.write(f"mtr -bw {ip}\n")
 
 ts = time.ctime()
 print(f"end={ts}")
