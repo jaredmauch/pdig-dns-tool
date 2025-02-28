@@ -272,7 +272,7 @@ if fn is not None:
     if args.upload:
         post_response = requests.post(url, data={'file': fn}, files={'file': open(fn, "rb")}, timeout=10)
         print("post=", post_response.text)
-    # remove temporary file
-    os.unlink(fn)
+        # remove report file only when uploaded
+        os.unlink(fn)
 
 #
