@@ -270,9 +270,21 @@ fn = query_domain(domain, args, socket_af_types)
 if fn is not None:
     print(f"fn={fn}")
     if args.upload:
-        post_response = requests.post(url, data={'file': fn}, files={'file': open(fn, "rb")}, timeout=10)
-        print("post=", post_response.text)
-        # remove report file only when uploaded
-        os.unlink(fn)
+        try:
+            with open(fn, "rb") as f:
+                post_response = requests.post(
+                    url, 
+                    data={'file': fn}, 
+                    files={'file': f}, 
+                    timeout=10,
+                    verify=True  # Verify HTTPS certificates
+                )
+                if post_response.status_code == 200:
+                    print("Upload successful:", post_response.text)
+                    os.unlink(fn)
+                else:
+                    print(f"Upload failed with status code: {post_response.status_code}")
+        except (requests.RequestException, IOError) as e:
+            print(f"Error during upload: {e}")
 
 #
