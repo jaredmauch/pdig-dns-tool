@@ -20,7 +20,13 @@ import statistics
 import sys
 import time
 import tempfile
+import json
 import requests
+
+# statistics stuff at the end
+import random
+import numpy.random
+
 
 # 3rd party imports
 try:
@@ -126,44 +132,43 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
                     # parse the response packet
                     # if we are not yet to an authoritative server
                     if not resp.flags & dns.flags.AA or len(resp.answer) > 0:
+                        ttl = None
+                        vname = None
                         for var in resp.answer:
+                            ttl = var.ttl
+                            vname = str(var.name)
                             for i in var.items:
                                 if var.rdtype == dns.rdatatype.CNAME:
                                     cname_reply = str(i)
-                                # Store TTL and latency information
-                                query_stats.append({
-                                    'latency': latency_ms,
-                                    'ttl': var.ttl,
-                                    'nameserver': x['qname'],
-                                    'ip': qip,
-                                    'record': str(i)
-                                })
-                                if file_handle is not None:
-                                    os.write(file_handle, str.encode(f"\"{latency_ms}\";\"{qip}\";{i};TTL={var.ttl}" + '\n'))
-                                print(f"\"{latency_ms}\";\"{qip}\";{i};TTL={var.ttl}")
+                            if file_handle is not None:
+                                os.write(file_handle, str.encode(f"\"{latency_ms}\";ans=\"{vname}\";qip=\"{qip}\";TTL={ttl}" + '\n'))
+                            print(f"\"{latency_ms}\";ans=\"{vname}\";qip=\"{qip}\";TTL={ttl}")
+                        # Store TTL and latency information
+                        if ttl is not None: 
+                            query_stats.append({'latency': latency_ms, 'ttl': ttl, 'nameserver': vname, 'ip': qip})
+                        ttl = None
+                        vname = None
                         # parse the authority portion of response packet
                         for var in resp.authority:
+                            ttl = var.ttl
+                            vname = str(var.name)
                             for i in var.items:
                                 # check NS responses
-                                query_stats.append({
-                                    'latency': latency_ms,
-                                    'ttl': var.ttl,
-                                    'nameserver': x['qname'],
-                                    'ip': qip,
-                                    'record': str(i)
-                                })
                                 if type(i) == dns.rdtypes.ANY.NS.NS:
                                     # both address families
                                     for fam in socket_types:
                                         try:
                                             add_info = socket.getaddrinfo(host=i.to_text(), port=None, family=fam, proto=socket.SOCK_RAW)
                                         except socket.gaierror:
-    #                                        print(e)
+#                                            print(e)
                                             continue
                                         str_name = str(i.to_text())
                                         for a in add_info:
                                             addr_list = a[4]
                                             new_cache.append({'qname': str_name, 'af_type': a[0], 'addrinfo': addr_list[0]})
+                        # Store TTL and latency information
+                        if ttl is not None:
+                            query_stats.append({'latency': latency_ms, 'ttl': var.ttl, 'nameserver': vname, 'ip': qip})
                 except dns.query.BadResponse as e:
                     print(f"error {e} querying {qip} for {full_qname}")
                     if file_handle is not None:
@@ -259,7 +264,7 @@ def query_domain(fqdn, cli_args, socket_types):
 
     # run through the domain tree until done
     while len(old_cache) > 0:
-        (reply_hints, new_domain, query_stats) = query_all(fqdn, old_cache, [dns.rdatatype.TXT], cli_args.tcp, fd, cli_args.gt, all_ips, socket_types)
+        (reply_hints, new_domain, query_stats) = query_all(fqdn, old_cache, [dns.rdatatype.AAAA], cli_args.tcp, fd, cli_args.gt, all_ips, socket_types)
         all_query_stats.extend(query_stats)
         old_cache = reply_hints
         if new_domain is not None:
@@ -300,42 +305,75 @@ def query_domain(fqdn, cli_args, socket_types):
         # Group by TTL ranges
         ttl_ranges = {}
         for stat in all_query_stats:
-            ttl_key = f"{stat['ttl']}s"
+            ttl_key = f"{stat['nameserver']}"
             if ttl_key not in ttl_ranges:
                 ttl_ranges[ttl_key] = {
                     'count': 0,
                     'latencies': [],
-                    'nameservers': set()
+                    'nameservers': set(),
+                    'ttl': None
                 }
             ttl_ranges[ttl_key]['count'] += 1
             ttl_ranges[ttl_key]['latencies'].append(stat['latency'])
             ttl_ranges[ttl_key]['nameservers'].add(stat['nameserver'])
+            ttl_ranges[ttl_key]['ttl'] = stat['ttl']
+
+        avg_list = []
+        min_list = []
+        max_list = []
+        stddev_list = []
+        ttl_list = []
+        count_list = []
 
         # Calculate and display statistics for each TTL range
-        for ttl, data in ttl_ranges.items():
+        for delegation, data in ttl_ranges.items():
             avg_latency = statistics.mean(data['latencies'])
             min_latency = min(data['latencies'])
             max_latency = max(data['latencies'])
             stddev = statistics.stdev(data['latencies']) if len(data['latencies']) > 1 else 0
 
-            print(f"\nTTL Range: {ttl}")
+            print(f"\nDelegation: {delegation}")
             print(f"Number of queries: {data['count']}")
-            print(f"Nameservers: {', '.join(data['nameservers'])}")
+            print(f"TTL: {data['ttl']}")
             print(f"Latency statistics (ms):")
             print(f"  Average: {avg_latency:.2f}")
             print(f"  Min: {min_latency:.2f}")
             print(f"  Max: {max_latency:.2f}")
             print(f"  StdDev: {stddev:.2f}")
 
+            avg_list.append(avg_latency)
+            min_list.append(min_latency)
+            max_list.append(max_latency)
+            stddev_list.append(stddev)
+            ttl_list.append(data['ttl'])
+            count_list.append(data['count'])
+
             if fd is not None:
-                os.write(fd, str.encode(f"\nTTL Range: {ttl}\n"))
+                os.write(fd, str.encode(f"\nDelegation: {ttl}\n"))
                 os.write(fd, str.encode(f"Number of queries: {data['count']}\n"))
-                os.write(fd, str.encode(f"Nameservers: {', '.join(data['nameservers'])}\n"))
+                os.write(fd, str.encode(f"TTL: {data['ttl']}\n"))
                 os.write(fd, str.encode(f"Latency statistics (ms):\n"))
                 os.write(fd, str.encode(f"  Average: {avg_latency:.2f}\n"))
                 os.write(fd, str.encode(f"  Min: {min_latency:.2f}\n"))
                 os.write(fd, str.encode(f"  Max: {max_latency:.2f}\n"))
                 os.write(fd, str.encode(f"  StdDev: {stddev:.2f}\n"))
+            #
+
+    rtt_val = 0.0
+    ttl_pct = 0
+    #
+    with open('data.json', 'w') as f:
+        rtt_vals = []
+        for avg_v, min_v, max_v, stddev_v, ttl_v, count_v in zip(avg_list, min_list, max_list, stddev_list, ttl_list, count_list):
+            ttl_pct = ttl_pct + (1/ttl_v)
+#            rtt_vals.append(list(numpy.random.uniform(min_v, max_v, 100000)))
+        json.dump(({ 'rtt_values': rtt_vals, 'ttl_odds': f"{ttl_pct:.8f}", 'num_queries': count_list }), f, indent=2)
+
+    ttl_pct = ttl_pct * 100.0
+    # likelyhood that any given ttl might expire at any given second
+    print(f"ttl_pct={ttl_pct:.5f}")
+
+        
 
     if fd is not None:
         os.close(fd)
