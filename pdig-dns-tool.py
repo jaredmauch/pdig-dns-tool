@@ -26,7 +26,7 @@ try:
     import dns.zone
 except:  # Too broad
     print("apt install python3-dnspython or pip3 install dnspython")
-    sys.exit(0)  # Exits with success code instead of error code
+    sys.exit(1)
 
 # apt install python3-netifaces
 #try:
@@ -171,6 +171,9 @@ def query_domain(fqdn, cli_args, socket_types):
     fd = None
     filename = None
     if cli_args.report:
+        # create a temporary file
+        # XXX 
+        # Should use `tempfile.NamedTemporaryFile()` instead for better resource management
         (fd, filename) = tempfile.mkstemp(suffix=".txt", text=True)
         os.write(fd, str.encode(f"querying for {fqdn}" + '\n'))
 
@@ -180,7 +183,21 @@ def query_domain(fqdn, cli_args, socket_types):
         os.write(fd, str.encode(f"start={ts}" + '\n'))
 
     # preseed the data
-    response = dns.resolver.resolve(".", "NS", lifetime=10, tcp=use_tcp)
+    try:
+        response = dns.resolver.resolve(".", "NS", lifetime=10, tcp=use_tcp)
+    except (dns.resolver.NoNameservers, dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.resolver.Timeout) as e:
+        print(f"Failed to resolve root nameservers: {e}")
+        if fd is not None:
+            os.write(fd, str.encode(f"Failed to resolve root nameservers: {e}\n"))
+            os.close(fd)
+        return None
+    except Exception as e:
+        print(f"Unexpected error resolving root nameservers: {e}")
+        if fd is not None:
+            os.write(fd, str.encode(f"Unexpected error resolving root nameservers: {e}\n"))
+            os.close(fd)
+        return None
+
     for var in response.response.answer:
         for i in var.items:
             for fam in socket_types:
