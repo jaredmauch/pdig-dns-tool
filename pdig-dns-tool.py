@@ -364,10 +364,13 @@ def query_domain(fqdn, cli_args, socket_types):
     #
     with open('data.json', 'w') as f:
         rtt_vals = []
-        for avg_v, min_v, max_v, stddev_v, ttl_v, count_v in zip(avg_list, min_list, max_list, stddev_list, ttl_list, count_list):
+        for ttl_v in ttl_list:
             ttl_pct = ttl_pct + (1/ttl_v)
 #            rtt_vals.append(list(numpy.random.uniform(min_v, max_v, 100000)))
-        json.dump(({ 'rtt_values': rtt_vals, 'ttl_odds': f"{ttl_pct:.8f}", 'num_queries': count_list }), f, indent=2)
+        data_dict = {'rtt_values': rtt_vals, 'ttl_odds': f"{ttl_pct:.8f}",
+            'avg_list': avg_list, 'min_list': min_list, 'max_list': max_list, 'stddev_list': stddev_list,
+            'ttl_list': ttl_list, 'count_list': count_list }
+        json.dump(data_dict, f, indent=2)
 
     ttl_pct = ttl_pct * 100.0
     # likelyhood that any given ttl might expire at any given second
