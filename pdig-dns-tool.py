@@ -43,7 +43,7 @@ except:  # Too broad
 #     eg: [dns.rdatatype.A, dns.rdatatype.AAAA]
 # tcp: when true, send query over tcp
 #
-def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency, ip_list):
+def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency, ip_list, socket_types):
     cname_reply = None
     new_cache = []
     times = []
@@ -110,7 +110,7 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
                                 # check NS responses
                                 if type(i) == dns.rdtypes.ANY.NS.NS:
                                     # both address families
-                                    for fam in socket_af_types:
+                                    for fam in socket_types:
                                         try:
                                             add_info = socket.getaddrinfo(host=i.to_text(), port=None, family=fam, proto=socket.SOCK_RAW)
                                         except socket.gaierror:
@@ -197,7 +197,7 @@ def query_domain(fqdn, cli_args, socket_types):
 
     # run through the domain tree until done
     while len(old_cache) > 0:
-        (reply_hints, new_domain) = query_all(fqdn, old_cache, [dns.rdatatype.TXT], use_tcp, fd, cli_args.gt, all_ips)
+        (reply_hints, new_domain) = query_all(fqdn, old_cache, [dns.rdatatype.TXT], use_tcp, fd, cli_args.gt, all_ips, socket_types)
         old_cache = reply_hints
         if new_domain is not None:
             print(f"(re)querying for {fqdn} due to CNAME to {new_domain}")
