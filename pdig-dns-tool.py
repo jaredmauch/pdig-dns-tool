@@ -59,8 +59,30 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
                 os.write(file_handle, str.encode(f"{e}:{full_qname}:{qtype}\n"))
         for x in prev_cache:
             qip = x['addrinfo']
-            # avoid possible odd link-local issues
-            if qip.startswith('fe80::'):
+            # Skip problematic IPv6 addresses
+            if (qip.startswith('fe80::') or  # Link-local
+                qip.startswith('fc') or      # ULA
+                qip.startswith('fd') or      # ULA
+                qip.startswith('ff') or      # Multicast IPv6
+                qip == '::1' or              # Loopback IPv6
+                qip == '::' or               # Unspecified IPv6
+                qip.startswith('224.') or    # Multicast IPv4
+                qip.startswith('225.') or    # Multicast IPv4
+                qip.startswith('226.') or    # Multicast IPv4
+                qip.startswith('227.') or    # Multicast IPv4
+                qip.startswith('228.') or    # Multicast IPv4
+                qip.startswith('229.') or    # Multicast IPv4
+                qip.startswith('230.') or    # Multicast IPv4
+                qip.startswith('231.') or    # Multicast IPv4
+                qip.startswith('232.') or    # Multicast IPv4
+                qip.startswith('233.') or    # Multicast IPv4
+                qip.startswith('234.') or    # Multicast IPv4
+                qip.startswith('235.') or    # Multicast IPv4
+                qip.startswith('236.') or    # Multicast IPv4
+                qip.startswith('237.') or    # Multicast IPv4
+                qip.startswith('238.') or    # Multicast IPv4
+                qip.startswith('239.') or    # Multicast IPv4
+                qip == '0.0.0.0'):           # Unspecified IPv4
                 continue
             # check if we have talked to this IP + QTYPE this round
             if query_ip.get(qip + str(qtype), None) is None:
@@ -184,7 +206,7 @@ def query_domain(fqdn, cli_args, socket_types):
 
     # preseed the data
     try:
-        response = dns.resolver.resolve(".", "NS", lifetime=10, tcp=use_tcp)
+        response = dns.resolver.resolve(".", "NS", lifetime=10, tcp=cli_args.tcp)
     except (dns.resolver.NoNameservers, dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.resolver.Timeout) as e:
         print(f"Failed to resolve root nameservers: {e}")
         if fd is not None:
@@ -214,7 +236,7 @@ def query_domain(fqdn, cli_args, socket_types):
 
     # run through the domain tree until done
     while len(old_cache) > 0:
-        (reply_hints, new_domain) = query_all(fqdn, old_cache, [dns.rdatatype.TXT], use_tcp, fd, cli_args.gt, all_ips, socket_types)
+        (reply_hints, new_domain) = query_all(fqdn, old_cache, [dns.rdatatype.TXT], cli_args.tcp, fd, cli_args.gt, all_ips, socket_types)
         old_cache = reply_hints
         if new_domain is not None:
             print(f"(re)querying for {fqdn} due to CNAME to {new_domain}")
@@ -256,7 +278,7 @@ def query_domain(fqdn, cli_args, socket_types):
 
 # define a parser
 parser = argparse.ArgumentParser(prog=sys.argv[0])
-parser.add_argument('domain', help="domain name to query") # positional argument
+parser.add_argument('domains', nargs='+', help="one or more domain names to query") # allow multiple domains
 parser.add_argument('-6', '--ipv6', action='store_true', help="query ipv6-only") # ipv6-only
 parser.add_argument('-4', '--ipv4', action='store_true', help="query ipv4-only") # ipv4-only
 parser.add_argument('-t', '--tcp', action='store_true', help="send queries over TCP") # use TCP
@@ -272,36 +294,31 @@ if args.ipv4:
     socket_af_types = [socket.AF_INET]
 if args.ipv6:
     socket_af_types = [socket.AF_INET6]
-if args.tcp:
-    use_tcp = True
-else:
-    use_tcp = False
 
-#parse args
-domain = args.domain
-
-# XXX Replace me if you are going to use -u flag
-url = "https://www.example.com/upload/upload_file.php"
-
-fn = query_domain(domain, args, socket_af_types)
-if fn is not None:
-    print(f"fn={fn}")
-    if args.upload:
-        try:
-            with open(fn, "rb") as f:
-                post_response = requests.post(
-                    url, 
-                    data={'file': fn}, 
-                    files={'file': f}, 
-                    timeout=10,
-                    verify=True  # Verify HTTPS certificates
-                )
-                if post_response.status_code == 200:
-                    print("Upload successful:", post_response.text)
-                    os.unlink(fn)
-                else:
-                    print(f"Upload failed with status code: {post_response.status_code}")
-        except (requests.RequestException, IOError) as e:
-            print(f"Error during upload: {e}")
+# Iterate through all specified domains
+for domain in args.domains:
+    print(f"\nProcessing domain: {domain}")
+    print("=" * 50)
+    fn = query_domain(domain, args, socket_af_types)
+    if fn is not None:
+        print(f"fn={fn}")
+        if args.upload:
+            try:
+                with open(fn, "rb") as f:
+                    post_response = requests.post(
+                        url, 
+                        data={'file': fn}, 
+                        files={'file': f}, 
+                        timeout=10,
+                        verify=True
+                    )
+                    if post_response.status_code == 200:
+                        print("Upload successful:", post_response.text)
+                        os.unlink(fn)
+                    else:
+                        print(f"Upload failed with status code: {post_response.status_code}")
+            except (requests.RequestException, IOError) as e:
+                print(f"Error during upload: {e}")
+    print("=" * 50)
 
 #
