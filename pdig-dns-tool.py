@@ -72,7 +72,6 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
                 qip.startswith('fc') or      # ULA
                 qip.startswith('fd') or      # ULA
                 qip.startswith('ff') or      # Multicast IPv6
-                qip == '::1' or              # Loopback IPv6
                 qip == '::' or               # Unspecified IPv6
                 qip.startswith('224.') or    # Multicast IPv4
                 qip.startswith('225.') or    # Multicast IPv4
@@ -218,7 +217,7 @@ def query_domain(fqdn, cli_args, socket_types):
     filename = None
     if cli_args.report:
         # create a temporary file
-        # XXX 
+        # XXX
         # Should use `tempfile.NamedTemporaryFile()` instead for better resource management
         (fd, filename) = tempfile.mkstemp(suffix=".txt", text=True)
         os.write(fd, str.encode(f"querying for {fqdn}" + '\n'))
@@ -297,7 +296,7 @@ def query_domain(fqdn, cli_args, socket_types):
     if all_query_stats:
         print("\nQuery Statistics Analysis:")
         print("=" * 50)
-        
+
         # Group by TTL ranges
         ttl_ranges = {}
         for stat in all_query_stats:
@@ -318,7 +317,7 @@ def query_domain(fqdn, cli_args, socket_types):
             min_latency = min(data['latencies'])
             max_latency = max(data['latencies'])
             stddev = statistics.stdev(data['latencies']) if len(data['latencies']) > 1 else 0
-            
+
             print(f"\nTTL Range: {ttl}")
             print(f"Number of queries: {data['count']}")
             print(f"Nameservers: {', '.join(data['nameservers'])}")
@@ -327,7 +326,7 @@ def query_domain(fqdn, cli_args, socket_types):
             print(f"  Min: {min_latency:.2f}")
             print(f"  Max: {max_latency:.2f}")
             print(f"  StdDev: {stddev:.2f}")
-            
+
             if fd is not None:
                 os.write(fd, str.encode(f"\nTTL Range: {ttl}\n"))
                 os.write(fd, str.encode(f"Number of queries: {data['count']}\n"))
@@ -379,9 +378,9 @@ for domain in args.domains:
             try:
                 with open(fn, "rb") as f:
                     post_response = requests.post(
-                        url, 
-                        data={'file': fn}, 
-                        files={'file': f}, 
+                        url,
+                        data={'file': fn},
+                        files={'file': f},
                         timeout=10,
                         verify=True
                     )
