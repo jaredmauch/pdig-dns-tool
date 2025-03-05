@@ -1,4 +1,10 @@
 #!/usr/bin/python3
+# /// script
+# dependencies = [
+#     "dnspython",
+#     "requests",
+# ]
+# ///
 
 """
 # ask each NS in the query for the domainname
