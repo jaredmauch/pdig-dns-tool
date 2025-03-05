@@ -24,9 +24,9 @@ try:
     import dns.rdatatype
     import dns.resolver
     import dns.zone
-except:
+except:  # Too broad
     print("apt install python3-dnspython or pip3 install dnspython")
-    sys.exit(0)
+    sys.exit(0)  # Exits with success code instead of error code
 
 # apt install python3-netifaces
 #try:
