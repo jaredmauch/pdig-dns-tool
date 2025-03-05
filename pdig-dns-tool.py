@@ -44,6 +44,8 @@ except:  # Too broad
 # tcp: when true, send query over tcp
 #
 def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency, ip_list, socket_types):
+    # Add new data structure to store TTL and latency info
+    query_stats = []
     cname_reply = None
     new_cache = []
     times = []
@@ -123,13 +125,28 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
                             for i in var.items:
                                 if var.rdtype == dns.rdatatype.CNAME:
                                     cname_reply = str(i)
+                                # Store TTL and latency information
+                                query_stats.append({
+                                    'latency': latency_ms,
+                                    'ttl': var.ttl,
+                                    'nameserver': x['qname'],
+                                    'ip': qip,
+                                    'record': str(i)
+                                })
                                 if file_handle is not None:
-                                    os.write(file_handle, str.encode(f"\"{latency_ms}\";\"{qip}\";{i}" + '\n'))
-                                print(f"\"{latency_ms}\";\"{qip}\";{i}")
+                                    os.write(file_handle, str.encode(f"\"{latency_ms}\";\"{qip}\";{i};TTL={var.ttl}" + '\n'))
+                                print(f"\"{latency_ms}\";\"{qip}\";{i};TTL={var.ttl}")
                         # parse the authority portion of response packet
                         for var in resp.authority:
                             for i in var.items:
                                 # check NS responses
+                                query_stats.append({
+                                    'latency': latency_ms,
+                                    'ttl': var.ttl,
+                                    'nameserver': x['qname'],
+                                    'ip': qip,
+                                    'record': str(i)
+                                })
                                 if type(i) == dns.rdtypes.ANY.NS.NS:
                                     # both address families
                                     for fam in socket_types:
@@ -147,9 +164,9 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
                     if file_handle is not None:
                         os.write(file_handle, str.encode(f"error {e} querying {qip} for {full_qname}\n"))
                 except dns.exception.Timeout as e:
-                    print(f"timeout querying: {x['addrinfo']}")
+                    print(f"timeout querying: {qip} - {x['qname']}")
                     if file_handle is not None:
-                        os.write(file_handle, str.encode(f"timeout querying: {qip}\n"))
+                        os.write(file_handle, str.encode(f"timeout querying: {qip} - {x['qname']}\n"))
                 except OSError as e:
                     # This is the new block to catch network unreachable errors
                     print(f"Network error: {e} when trying to query {qip} for {x['qname']}")
@@ -174,19 +191,20 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
         print(f"NXDOMAIN for {full_qname}, stopping...")
         if file_handle is not None:
             os.write(file_handle, str.encode(f"NXDOMAIN for {full_qname}, stopping..." + '\n'))
-        return ([], None)
+        return ([], None, [])
     # See bug #5. This is to prevent some endless loops if we do not
     # progress in the domain name tree.
     if sorted(new_cache, key=lambda ns: ns["qname"]) == \
        sorted(prev_cache, key=lambda ns: ns["qname"]):
         new_cache = []
-    return (new_cache, cname_reply)
+    return (new_cache, cname_reply, query_stats)
 
 
 def query_domain(fqdn, cli_args, socket_types):
     root_hints = []
 
     all_ips = {}
+    all_query_stats = []  # Store all query statistics
 
     print(f"querying for {fqdn}")
 
@@ -236,7 +254,8 @@ def query_domain(fqdn, cli_args, socket_types):
 
     # run through the domain tree until done
     while len(old_cache) > 0:
-        (reply_hints, new_domain) = query_all(fqdn, old_cache, [dns.rdatatype.TXT], cli_args.tcp, fd, cli_args.gt, all_ips, socket_types)
+        (reply_hints, new_domain, query_stats) = query_all(fqdn, old_cache, [dns.rdatatype.TXT], cli_args.tcp, fd, cli_args.gt, all_ips, socket_types)
+        all_query_stats.extend(query_stats)
         old_cache = reply_hints
         if new_domain is not None:
             print(f"(re)querying for {fqdn} due to CNAME to {new_domain}")
@@ -267,6 +286,51 @@ def query_domain(fqdn, cli_args, socket_types):
                 print(f"{e}:{ip}")
                 os.write(fd, str.encode(f"{e}:{ip}"))
             os.write(fd, str.encode(f"mtr -bw {ip}\n"))
+
+    # After the main query loop, analyze and output the statistics
+    if all_query_stats:
+        print("\nQuery Statistics Analysis:")
+        print("=" * 50)
+        
+        # Group by TTL ranges
+        ttl_ranges = {}
+        for stat in all_query_stats:
+            ttl_key = f"{stat['ttl']}s"
+            if ttl_key not in ttl_ranges:
+                ttl_ranges[ttl_key] = {
+                    'count': 0,
+                    'latencies': [],
+                    'nameservers': set()
+                }
+            ttl_ranges[ttl_key]['count'] += 1
+            ttl_ranges[ttl_key]['latencies'].append(stat['latency'])
+            ttl_ranges[ttl_key]['nameservers'].add(stat['nameserver'])
+
+        # Calculate and display statistics for each TTL range
+        for ttl, data in ttl_ranges.items():
+            avg_latency = statistics.mean(data['latencies'])
+            min_latency = min(data['latencies'])
+            max_latency = max(data['latencies'])
+            stddev = statistics.stdev(data['latencies']) if len(data['latencies']) > 1 else 0
+            
+            print(f"\nTTL Range: {ttl}")
+            print(f"Number of queries: {data['count']}")
+            print(f"Nameservers: {', '.join(data['nameservers'])}")
+            print(f"Latency statistics (ms):")
+            print(f"  Average: {avg_latency:.2f}")
+            print(f"  Min: {min_latency:.2f}")
+            print(f"  Max: {max_latency:.2f}")
+            print(f"  StdDev: {stddev:.2f}")
+            
+            if fd is not None:
+                os.write(fd, str.encode(f"\nTTL Range: {ttl}\n"))
+                os.write(fd, str.encode(f"Number of queries: {data['count']}\n"))
+                os.write(fd, str.encode(f"Nameservers: {', '.join(data['nameservers'])}\n"))
+                os.write(fd, str.encode(f"Latency statistics (ms):\n"))
+                os.write(fd, str.encode(f"  Average: {avg_latency:.2f}\n"))
+                os.write(fd, str.encode(f"  Min: {min_latency:.2f}\n"))
+                os.write(fd, str.encode(f"  Max: {max_latency:.2f}\n"))
+                os.write(fd, str.encode(f"  StdDev: {stddev:.2f}\n"))
 
     if fd is not None:
         os.close(fd)
