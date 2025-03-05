@@ -295,6 +295,9 @@ if args.ipv4:
 if args.ipv6:
     socket_af_types = [socket.AF_INET6]
 
+# XXX Replace me if you are going to use -u flag
+url = "https://www.example.com/upload/upload_file.php"
+
 # Iterate through all specified domains
 for domain in args.domains:
     print(f"\nProcessing domain: {domain}")
