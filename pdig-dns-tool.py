@@ -14,14 +14,14 @@
 """
 
 import argparse
+#import json
 import os
+import requests
 import socket
 import statistics
 import sys
-import time
 import tempfile
-#import json
-import requests
+import time
 
 # statistics stuff at the end
 # import random
@@ -62,8 +62,14 @@ def cached_getaddrinfo(hostname, port, family, proto):
             return a.get('cache')
     try:
         add_info = socket.getaddrinfo(host=hostname, port=port, family=family, proto=proto)
-    except socket.gaierror:
-        #print("socket.gaierror", e)
+    except socket.gaierror as e:
+        if e.errno == -2: # Name or service not known
+            add_entry = { "hostname": hostname, "family": family, "proto": proto , "cache": None }
+            addrinfo_cache.append(add_entry)
+#        print(f"DNS resolution error for {hostname}: {e.errno}")
+        return None
+    except socket.error as e:
+        print(f"Socket error for {hostname}: {e}")
         return None
 
     add_entry = { "hostname": hostname, "family": family, "proto": proto , "cache": add_info }
@@ -250,16 +256,16 @@ def query_domain(fqdn, cli_args, socket_types):
     fd = None
     filename = None
     if cli_args.report:
-        # create a temporary file
-        # XXX
-        # Should use `tempfile.NamedTemporaryFile()` instead for better resource management
-        (fd, filename) = tempfile.mkstemp(suffix=".txt", text=True)
-        os.write(fd, str.encode(f"querying for {fqdn}" + '\n'))
-
-    ts = time.ctime()
-    print(f"start={ts}")
-    if fd is not None:
-        os.write(fd, str.encode(f"start={ts}" + '\n'))
+        try:
+            (fd, filename) = tempfile.mkstemp(suffix=".txt", text=True)
+            with os.fdopen(fd, 'wb') as f:
+                f.write(str.encode(f"querying for {fqdn}\n"))
+                ts = time.ctime()
+                print(f"start={ts}")
+                f.write(str.encode(f"start={ts}\n"))
+        except Exception as e:
+            print(f"Error creating temporary file: {e}")
+            return None
 
     # preseed the data
     try:
@@ -422,14 +428,14 @@ parser.add_argument('-r', '--report', action='store_true', help="Save results to
 parser.add_argument('-g', '--gt', action='store_true', help="greater than 100ms only")
 parser.add_argument('-u', '--upload', action='store_true', help="requires -r - uploads report to hardcoded url")
 
+args = parser.parse_args()
+
+# Validate mutually exclusive arguments
+if args.ipv4 and args.ipv6:
+    print("Error: Cannot specify both --ipv4 and --ipv6")
+    sys.exit(1)
 
 socket_af_types = [socket.AF_INET, socket.AF_INET6]
-
-args = parser.parse_args()
-if args.ipv4:
-    socket_af_types = [socket.AF_INET]
-if args.ipv6:
-    socket_af_types = [socket.AF_INET6]
 
 # XXX Replace me if you are going to use -u flag
 url = "https://www.example.com/upload/upload_file.php"
@@ -453,11 +459,22 @@ for domain in args.domains:
                     )
                     if post_response.status_code == 200:
                         print("Upload successful:", post_response.text)
-                        os.unlink(fn)
+                        try:
+                            os.unlink(fn)
+                        except OSError as e:
+                            print(f"Warning: Could not delete temporary file {fn}: {e}")
                     else:
                         print(f"Upload failed with status code: {post_response.status_code}")
+                        try:
+                            os.unlink(fn)  # Clean up file even on failed upload
+                        except OSError:
+                            pass
             except (requests.RequestException, IOError) as e:
                 print(f"Error during upload: {e}")
+                try:
+                    os.unlink(fn)  # Clean up file on exception
+                except OSError:
+                    pass
     print("=" * 50)
 
 # internal statistics
