@@ -20,7 +20,7 @@ import statistics
 import sys
 import time
 import tempfile
-import json
+#import json
 import requests
 
 # statistics stuff at the end
@@ -39,7 +39,7 @@ try:
     import dns.rdatatype
     import dns.resolver
     import dns.zone
-except:  # Too broad
+except:
     print("apt install python3-dnspython or pip3 install dnspython")
     sys.exit(1)
 
@@ -61,7 +61,7 @@ def cached_getaddrinfo(hostname, port, family, proto):
             addrinfo_cache_hits = addrinfo_cache_hits + 1
             return a.get('cache')
     try:
-        add_info = socket.getaddrinfo(host=hostname, port=None, family=family, proto=proto)
+        add_info = socket.getaddrinfo(host=hostname, port=port, family=family, proto=proto)
     except socket.gaierror:
         #print("socket.gaierror", e)
         return None
@@ -77,6 +77,9 @@ def cached_getaddrinfo(hostname, port, family, proto):
 # tcp: when true, send query over tcp
 #
 def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency, ip_list, socket_types):
+    """
+        query_all handles making the query for each dns server
+    """
     # Add new data structure to store TTL and latency info
     query_stats = []
     cname_reply = None
@@ -89,15 +92,15 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
         try:
             q = dns.message.make_query(full_qname, qtype)
         except Exception as e:
-            print(e, full_qname, qtype)
+            print(f"{e}:{full_qname}:{qtype}")
             if file_handle is not None:
                 os.write(file_handle, str.encode(f"{e}:{full_qname}:{qtype}\n"))
         for x in prev_cache:
             qip = x['addrinfo']
             # Skip problematic IPv6 addresses
-            if (qip.startswith('fe80::') or  # Link-local
-                qip.startswith('fc') or      # ULA
+            if (qip.startswith('fc') or      # ULA
                 qip.startswith('fd') or      # ULA
+                qip.startswith('fe80::') or  # Link-local
                 qip.startswith('ff') or      # Multicast IPv6
                 qip == '::' or               # Unspecified IPv6
                 qip.startswith('224.') or    # Multicast IPv4
@@ -129,9 +132,9 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
                 start_time = time.time()
                 try:
                     if tcp:
-                        resp = dns.query.tcp(q, qip, timeout=10)
+                        resp = dns.query.tcp(q, qip, timeout=3)
                     else:
-                        resp =  dns.query.udp(q, qip, timeout=10)
+                        resp =  dns.query.udp(q, qip, timeout=3)
                     stop_time = time.time()
 
                     latency = stop_time - start_time
@@ -139,9 +142,9 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
                     times.append(latency_ms)
 
                     if latency_ms > 100 or high_latency is False:
-                        print(f"ns={x['qname']} addr={qip}, latency={latency_ms:.3f} ms")
+                        print(f"ns={x['qname']}, qtype={dns.rdatatype.to_text(qtype)}, addr={qip}, latency={latency_ms:.3f} ms")
                         if file_handle is not None:
-                            os.write(file_handle, str.encode(f"ns={x['qname']} addr={qip}, latency={latency_ms:.3f} ms" + '\n'))
+                            os.write(file_handle, str.encode(f"ns={x['qname']}, qtype={dns.rdatatype.to_text(qtype)}, addr={qip}, latency={latency_ms:.3f} ms" + '\n'))
 
                     if resp.rcode() == dns.rcode.NXDOMAIN:
                         domain_exists = False
@@ -152,13 +155,14 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
 
                     # parse the response packet
                     # if we are not yet to an authoritative server
-                    if not resp.flags & dns.flags.AA or len(resp.answer) > 0 or len(resp.authority):
+                    if not resp.flags & dns.flags.AA or len(resp.answer) > 0 or len(resp.authority) > 0:
                         ttl = None
                         vname = None
 #                        print("parsing resp.answer", time.time())
                         for var in resp.answer:
                             ttl = var.ttl
                             vname = str(var.name)
+#                            print("var.name=", vname)
                             for i in var.items:
                                 if var.rdtype == dns.rdatatype.CNAME:
                                     cname_reply = str(i)
@@ -166,7 +170,7 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
                                 os.write(file_handle, str.encode(f"\"{latency_ms}\";ans=\"{vname}\";qip=\"{qip}\";TTL={ttl}" + '\n'))
                             print(f"\"{latency_ms}\";ans=\"{vname}\";qip=\"{qip}\";TTL={ttl}")
                         # Store TTL and latency information
-                        if ttl is not None: 
+                        if ttl is not None:
                             query_stats.append({'latency': latency_ms, 'ttl': ttl, 'nameserver': vname, 'ip': qip})
                         ttl = None
                         vname = None
@@ -175,6 +179,7 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
                         for var in resp.authority:
                             ttl = var.ttl
                             vname = str(var.name)
+#                            print("var.name=", vname)
                             for i in var.items:
                                 # check NS responses
                                 if type(i) == dns.rdtypes.ANY.NS.NS:
@@ -184,9 +189,9 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
 #                                        print("time=", time.time(), " getaddrinfo:", str_name)
                                         add_info = cached_getaddrinfo(str_name, None, fam, socket.SOCK_RAW)
                                         if add_info is not None:
-                                          for a in add_info:
-                                            addr_list = a[4]
-                                            new_cache.append({'qname': str_name, 'af_type': a[0], 'addrinfo': addr_list[0]})
+                                            for a in add_info:
+                                                addr_list = a[4]
+                                                new_cache.append({'qname': str_name, 'af_type': a[0], 'addrinfo': addr_list[0]})
                         # Store TTL and latency information
                         if ttl is not None:
                             query_stats.append({'latency': latency_ms, 'ttl': var.ttl, 'nameserver': vname, 'ip': qip})
@@ -232,6 +237,9 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
 
 
 def query_domain(fqdn, cli_args, socket_types):
+    """
+        query_domain starts the top of the query chain for each domain
+    """
     root_hints = []
 
     all_ips = {}
@@ -370,7 +378,7 @@ def query_domain(fqdn, cli_args, socket_types):
             count_list.append(data['count'])
 
             if fd is not None:
-                os.write(fd, str.encode(f"\nDelegation: {ttl}\n"))
+                os.write(fd, str.encode(f"\nDelegation: {delegation}\n"))
                 os.write(fd, str.encode(f"Number of queries: {data['count']}\n"))
                 os.write(fd, str.encode(f"TTL: {data['ttl']}\n"))
                 os.write(fd, str.encode(f"Latency statistics (ms):\n"))
