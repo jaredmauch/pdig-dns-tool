@@ -453,4 +453,4 @@ for domain in args.domains:
     print("=" * 50)
 
 # internal statistics
-#print(f"addrinfo_cache_hits={addrinfo_cache_hits}")
+#print(f"addrinfo_cache_hits={addrinfo_cache_hits} - cache size:", len(addrinfo_cache))
