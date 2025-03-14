@@ -50,7 +50,25 @@ except:  # Too broad
 #    print("apt install python3-netifaces or pip3 install netifaces")
 #    sys.exit(0)
 
+addrinfo_cache = []
 
+addrinfo_cache_hits = 0
+
+def cached_getaddrinfo(hostname, port, family, proto):
+    global addrinfo_cache_hits
+    for a in addrinfo_cache:
+        if a.get('hostname') == hostname and a.get('family') == family and a.get('proto') == proto:
+            addrinfo_cache_hits = addrinfo_cache_hits + 1
+            return a.get('cache')
+    try:
+        add_info = socket.getaddrinfo(host=hostname, port=None, family=family, proto=proto)
+    except socket.gaierror:
+        #print("socket.gaierror", e)
+        return None
+
+    add_entry = { "hostname": hostname, "family": family, "proto": proto , "cache": add_info }
+    addrinfo_cache.append(add_entry)
+    return add_info
 
 # full_qname: domain name to query for
 # prev_cache: list of nameservers to query
@@ -134,9 +152,10 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
 
                     # parse the response packet
                     # if we are not yet to an authoritative server
-                    if not resp.flags & dns.flags.AA or len(resp.answer) > 0:
+                    if not resp.flags & dns.flags.AA or len(resp.answer) > 0 or len(resp.authority):
                         ttl = None
                         vname = None
+#                        print("parsing resp.answer", time.time())
                         for var in resp.answer:
                             ttl = var.ttl
                             vname = str(var.name)
@@ -151,6 +170,7 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
                             query_stats.append({'latency': latency_ms, 'ttl': ttl, 'nameserver': vname, 'ip': qip})
                         ttl = None
                         vname = None
+#                        print("parsing resp.authority", time.time())
                         # parse the authority portion of response packet
                         for var in resp.authority:
                             ttl = var.ttl
@@ -160,13 +180,11 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
                                 if type(i) == dns.rdtypes.ANY.NS.NS:
                                     # both address families
                                     for fam in socket_types:
-                                        try:
-                                            add_info = socket.getaddrinfo(host=i.to_text(), port=None, family=fam, proto=socket.SOCK_RAW)
-                                        except socket.gaierror:
-#                                            print(e)
-                                            continue
                                         str_name = str(i.to_text())
-                                        for a in add_info:
+#                                        print("time=", time.time(), " getaddrinfo:", str_name)
+                                        add_info = cached_getaddrinfo(str_name, None, fam, socket.SOCK_RAW)
+                                        if add_info is not None:
+                                          for a in add_info:
                                             addr_list = a[4]
                                             new_cache.append({'qname': str_name, 'af_type': a[0], 'addrinfo': addr_list[0]})
                         # Store TTL and latency information
@@ -434,4 +452,5 @@ for domain in args.domains:
                 print(f"Error during upload: {e}")
     print("=" * 50)
 
-#
+# internal statistics
+#print(f"addrinfo_cache_hits={addrinfo_cache_hits}")
