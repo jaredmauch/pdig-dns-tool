@@ -177,7 +177,7 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
                             print(f"\"{latency_ms:.3f}\";ans=\"{vname}\";qip=\"{qip}\";TTL={ttl}")
                         # Store TTL and latency information
                         if ttl is not None:
-                            query_stats.append({'latency': latency_ms, 'ttl': ttl, 'nameserver': vname, 'ip': qip})
+                            query_stats.append({'latency': latency_ms, 'ttl': ttl, 'nameserver': vname, 'ip': qip, 'nsname': x['qname']})
                         ttl = None
                         vname = None
 #                        print("parsing resp.authority", time.time())
@@ -200,7 +200,7 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
                                                 new_cache.append({'qname': str_name, 'af_type': a[0], 'addrinfo': addr_list[0]})
                         # Store TTL and latency information
                         if ttl is not None:
-                            query_stats.append({'latency': latency_ms, 'ttl': var.ttl, 'nameserver': vname, 'ip': qip})
+                            query_stats.append({'latency': latency_ms, 'ttl': var.ttl, 'nameserver': vname, 'ip': qip, 'nsname': x['qname']})
                 except dns.query.BadResponse as e:
                     print(f"error {e} querying {qip} for {full_qname}")
                     if file_handle is not None:
@@ -394,14 +394,14 @@ def query_domain(fqdn, cli_args, socket_types, verbose=False):
                         # Find the nameserver that maps to this IP
                         for ns_stat in all_query_stats:
                             if ns_stat['ip'] == min_ip:
-                                min_ns = ns_stat['nameserver']
+                                min_ns = ns_stat['nsname']
                                 break
                     if stat['latency'] == max_latency:
                         max_ip = stat['ip']
                         # Find the nameserver that maps to this IP
                         for ns_stat in all_query_stats:
                             if ns_stat['ip'] == max_ip:
-                                max_ns = ns_stat['nameserver']
+                                max_ns = ns_stat['nsname']
                                 break
 
             print(f"\nDelegation: {delegation}")
