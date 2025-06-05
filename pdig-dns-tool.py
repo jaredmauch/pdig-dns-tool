@@ -54,17 +54,17 @@ addrinfo_cache = []
 
 addrinfo_cache_hits = 0
 
-def cached_getaddrinfo(hostname, port, family, proto):
+def cached_getaddrinfo(hostname, port, family):
     global addrinfo_cache_hits
     for a in addrinfo_cache:
-        if a.get('hostname') == hostname and a.get('family') == family and a.get('proto') == proto:
+        if a.get('hostname') == hostname and a.get('family') == family:
             addrinfo_cache_hits = addrinfo_cache_hits + 1
             return a.get('cache')
     try:
-        add_info = socket.getaddrinfo(host=hostname, port=port, family=family, proto=proto)
+        add_info = socket.getaddrinfo(host=hostname, port=port, family=family)
     except socket.gaierror as e:
         if e.errno == -2: # Name or service not known
-            add_entry = { "hostname": hostname, "family": family, "proto": proto , "cache": None }
+            add_entry = { "hostname": hostname, "family": family, "cache": None }
             addrinfo_cache.append(add_entry)
 #        print(f"DNS resolution error for {hostname}: {e.errno}")
         return None
@@ -72,7 +72,7 @@ def cached_getaddrinfo(hostname, port, family, proto):
         print(f"Socket error for {hostname}: {e}")
         return None
 
-    add_entry = { "hostname": hostname, "family": family, "proto": proto , "cache": add_info }
+    add_entry = { "hostname": hostname, "family": family, "cache": add_info }
     addrinfo_cache.append(add_entry)
     return add_info
 
@@ -193,7 +193,7 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
                                     for fam in socket_types:
                                         str_name = str(i.to_text())
 #                                        print("time=", time.time(), " getaddrinfo:", str_name)
-                                        add_info = cached_getaddrinfo(str_name, None, fam, socket.SOCK_RAW)
+                                        add_info = cached_getaddrinfo(str_name, None, fam)
                                         if add_info is not None:
                                             for a in add_info:
                                                 addr_list = a[4]
@@ -290,7 +290,7 @@ def query_domain(fqdn, cli_args, socket_types, verbose=False):
         for i in var.items:
             for fam in socket_types:
                 try:
-                    add_info = socket.getaddrinfo(host=i.to_text(), port=None, family=fam, proto=socket.SOCK_RAW)
+                    add_info = socket.getaddrinfo(host=i.to_text(), port=None, family=fam)
                     if verbose:
                         print(f"[VERBOSE] getaddrinfo for {i.to_text()} (family {fam}): {add_info}")
                 except socket.gaierror as e:
