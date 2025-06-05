@@ -376,10 +376,18 @@ def query_domain(fqdn, cli_args, socket_types):
                 if stat['nameserver'] == delegation:
                     if stat['latency'] == min_latency:
                         min_ip = stat['ip']
-                        min_ns = stat['nameserver']
+                        # Find the nameserver that maps to this IP
+                        for ns_stat in all_query_stats:
+                            if ns_stat['ip'] == min_ip:
+                                min_ns = ns_stat['nameserver']
+                                break
                     if stat['latency'] == max_latency:
                         max_ip = stat['ip']
-                        max_ns = stat['nameserver']
+                        # Find the nameserver that maps to this IP
+                        for ns_stat in all_query_stats:
+                            if ns_stat['ip'] == max_ip:
+                                max_ns = ns_stat['nameserver']
+                                break
 
             print(f"\nDelegation: {delegation}")
             print(f"Number of queries: {data['count']}")
