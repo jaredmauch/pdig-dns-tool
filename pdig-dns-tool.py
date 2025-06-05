@@ -367,23 +367,27 @@ def query_domain(fqdn, cli_args, socket_types):
             max_latency = max(data['latencies'])
             stddev = statistics.stdev(data['latencies']) if len(data['latencies']) > 1 else 0
 
-            # Find IP addresses associated with min and max latencies
+            # Find IP addresses and nameservers associated with min and max latencies
             min_ip = None
             max_ip = None
+            min_ns = None
+            max_ns = None
             for stat in all_query_stats:
                 if stat['nameserver'] == delegation:
                     if stat['latency'] == min_latency:
                         min_ip = stat['ip']
+                        min_ns = stat['nameserver']
                     if stat['latency'] == max_latency:
                         max_ip = stat['ip']
+                        max_ns = stat['nameserver']
 
             print(f"\nDelegation: {delegation}")
             print(f"Number of queries: {data['count']}")
             print(f"TTL: {data['ttl']}")
             print(f"Latency statistics (ms):")
             print(f"  Average: {avg_latency:.2f}")
-            print(f"  Min: {min_latency:.2f} (IP: {min_ip})")
-            print(f"  Max: {max_latency:.2f} (IP: {max_ip})")
+            print(f"  Min: {min_latency:.2f} (IP: {min_ip}, NS: {min_ns})")
+            print(f"  Max: {max_latency:.2f} (IP: {max_ip}, NS: {max_ns})")
             print(f"  StdDev: {stddev:.2f}")
 
             avg_list.append(avg_latency)
@@ -399,8 +403,8 @@ def query_domain(fqdn, cli_args, socket_types):
                 os.write(fd, str.encode(f"TTL: {data['ttl']}\n"))
                 os.write(fd, str.encode(f"Latency statistics (ms):\n"))
                 os.write(fd, str.encode(f"  Average: {avg_latency:.2f}\n"))
-                os.write(fd, str.encode(f"  Min: {min_latency:.2f} (IP: {min_ip})\n"))
-                os.write(fd, str.encode(f"  Max: {max_latency:.2f} (IP: {max_ip})\n"))
+                os.write(fd, str.encode(f"  Min: {min_latency:.2f} (IP: {min_ip}, NS: {min_ns})\n"))
+                os.write(fd, str.encode(f"  Max: {max_latency:.2f} (IP: {max_ip}, NS: {max_ns})\n"))
                 os.write(fd, str.encode(f"  StdDev: {stddev:.2f}\n"))
 
 ##     rtt_val = 0.0
