@@ -242,7 +242,7 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
     return (new_cache, cname_reply, query_stats)
 
 
-def query_domain(fqdn, cli_args, socket_types):
+def query_domain(fqdn, cli_args, socket_types, verbose=False):
     """
         query_domain starts the top of the query chain for each domain
     """
@@ -256,20 +256,23 @@ def query_domain(fqdn, cli_args, socket_types):
     fd = None
     filename = None
     if cli_args.report:
+        filename = cli_args.report
         try:
-            (fd, filename) = tempfile.mkstemp(suffix=".txt", text=True)
+            fd = os.open(filename, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
             with os.fdopen(fd, 'wb') as f:
                 f.write(str.encode(f"querying for {fqdn}\n"))
                 ts = time.ctime()
                 print(f"start={ts}")
                 f.write(str.encode(f"start={ts}\n"))
         except Exception as e:
-            print(f"Error creating temporary file: {e}")
+            print(f"Error creating report file '{filename}': {e}")
             return None
 
     # preseed the data
     try:
         response = dns.resolver.resolve(".", "NS", lifetime=10, tcp=cli_args.tcp)
+        if verbose:
+            print(f"[VERBOSE] Successfully resolved root NS records: {response}")
     except (dns.resolver.NoNameservers, dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.resolver.Timeout) as e:
         print(f"Failed to resolve root nameservers: {e}")
         if fd is not None:
@@ -288,13 +291,20 @@ def query_domain(fqdn, cli_args, socket_types):
             for fam in socket_types:
                 try:
                     add_info = socket.getaddrinfo(host=i.to_text(), port=None, family=fam, proto=socket.SOCK_RAW)
-                except socket.gaierror:
+                    if verbose:
+                        print(f"[VERBOSE] getaddrinfo for {i.to_text()} (family {fam}): {add_info}")
+                except socket.gaierror as e:
+                    if verbose:
+                        print(f"[VERBOSE] socket.gaierror for {i.to_text()} (family {fam}): {e}")
                     continue
                 str_name = str(i.to_text())
                 for a in add_info:
                     addr_list = a[4]
                     root_hints.append({'qname': str_name, 'af_type': a[0], 'addrinfo': addr_list[0]})
-#                    print(f"getaddrinfo: {str_name}: af_type: {a[0]}, addrinfo: {addr_list[0]}")
+                    if verbose:
+                        print(f"[VERBOSE] Added root hint: qname={str_name}, af_type={a[0]}, addrinfo={addr_list[0]}")
+    if len(root_hints) == 0:
+        print("No root hints found after processing root NS records!")
     old_cache = root_hints
 
     # run through the domain tree until done
@@ -315,22 +325,27 @@ def query_domain(fqdn, cli_args, socket_types):
     ts = time.ctime()
     print(f"end={ts}")
     if fd is not None:
-        os.write(fd, str.encode(f"end={ts}" + '\n'))
-
-        for ip in all_ips:
-            os.write(fd, str.encode(f"# {ip}\n"))
-            os.write(fd, str.encode(f"dig +noall +answer +stats @{ip} identity.nameserver.id ch txt\n"))
-            identity = dns.message.make_query("identity.nameserver.id", dns.rdatatype.TXT, rdclass=dns.rdataclass.CHAOS)
-            try:
-                resp =  dns.query.udp(identity, ip, timeout=10)
-                for var in resp.answer:
-                    for i in var.items:
-                        os.write(fd, str.encode(f"\"{ts}\";\"{ip}\";{i}" + '\n'))
-                        print(f"\"{ts}\";\"{ip}\";{i}")
-            except Exception as e:
-                print(f"{e}:{ip}")
-                os.write(fd, str.encode(f"{e}:{ip}"))
-            os.write(fd, str.encode(f"mtr -bw {ip}\n"))
+        try:
+            fd = os.open(filename, os.O_WRONLY | os.O_APPEND)
+            os.write(fd, str.encode(f"end={ts}" + '\n'))
+            for ip in all_ips:
+                os.write(fd, str.encode(f"# {ip}\n"))
+                os.write(fd, str.encode(f"dig +noall +answer +stats @{ip} identity.nameserver.id ch txt\n"))
+                identity = dns.message.make_query("identity.nameserver.id", dns.rdatatype.TXT, rdclass=dns.rdataclass.CHAOS)
+                try:
+                    resp =  dns.query.udp(identity, ip, timeout=10)
+                    for var in resp.answer:
+                        for i in var.items:
+                            os.write(fd, str.encode(f"\"{ts}\";\"{ip}\";{i}" + '\n'))
+                            print(f"\"{ts}\";\"{ip}\";{i}")
+                except Exception as e:
+                    print(f"{e}:{ip}")
+                    os.write(fd, str.encode(f"{e}:{ip}"))
+                os.write(fd, str.encode(f"mtr -bw {ip}\n"))
+        except Exception as e:
+            print(f"Warning: Could not write to report file: {e}")
+        finally:
+            os.close(fd)
 
     # After the main query loop, analyze and output the statistics
     if all_query_stats:
@@ -446,9 +461,10 @@ parser.add_argument('domains', nargs='+', help="one or more domain names to quer
 parser.add_argument('-6', '--ipv6', action='store_true', help="query ipv6-only") # ipv6-only
 parser.add_argument('-4', '--ipv4', action='store_true', help="query ipv4-only") # ipv4-only
 parser.add_argument('-t', '--tcp', action='store_true', help="send queries over TCP") # use TCP
-parser.add_argument('-r', '--report', action='store_true', help="Save results to file")
+parser.add_argument('-r', '--report', metavar='REPORT_FILE', type=str, help="Save results to specified file")
 parser.add_argument('-g', '--gt', action='store_true', help="greater than 100ms only")
 parser.add_argument('-u', '--upload', action='store_true', help="requires -r - uploads report to hardcoded url")
+parser.add_argument('-v', '--verbose', action='store_true', help="enable verbose debugging output")
 
 args = parser.parse_args()
 
@@ -466,7 +482,7 @@ url = "https://www.example.com/upload/upload_file.php"
 for domain in args.domains:
     print(f"\nProcessing domain: {domain}")
     print("=" * 50)
-    fn = query_domain(domain, args, socket_af_types)
+    fn = query_domain(domain, args, socket_af_types, verbose=args.verbose)
     if fn is not None:
         print(f"fn={fn}")
         if args.upload:
