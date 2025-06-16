@@ -172,9 +172,10 @@ def query_all(full_qname, prev_cache, qtype_list, tcp, file_handle, high_latency
                             for i in var.items:
                                 if var.rdtype == dns.rdatatype.CNAME:
                                     cname_reply = str(i)
-                            if file_handle is not None:
-                                os.write(file_handle, str.encode(f"\"{latency_ms:.3f}\";ans=\"{vname}\";qip=\"{qip}\";TTL={ttl}" + '\n'))
-                            print(f"\"{latency_ms:.3f}\";ans=\"{vname}\";qip=\"{qip}\";TTL={ttl}")
+                            if latency_ms > 100 or high_latency is False:
+                                if file_handle is not None:
+                                    os.write(file_handle, str.encode(f"\"{latency_ms}\";ans=\"{vname}\";qip=\"{qip}\";TTL={ttl}" + '\n'))
+                                print(f"\"{latency_ms}\";ans=\"{vname}\";qip=\"{qip}\";TTL={ttl}")
                         # Store TTL and latency information
                         if ttl is not None:
                             query_stats.append({'latency': latency_ms, 'ttl': ttl, 'nameserver': vname, 'ip': qip, 'nsname': x['qname']})
